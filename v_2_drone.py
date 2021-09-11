@@ -8,12 +8,17 @@ from datetime import datetime
 import folder_create
 import decode_coordinates
 import json
+import socket
+
+PERMET_HOST = '192.168.4.1'  # Permetező IP
+PERMET_PORT = 80  # Permetező port
 
 # Drone parameters
 drone = tello.Tello()
 
 # Drone parameters
 drone_speed = 50
+expectedheight = 100
 drone.set_speed(drone_speed)
 
 # Area [x,y][min(0,0)][max(200,200)]]
@@ -37,6 +42,23 @@ image_operation = False
 now = datetime.now()
 real_folder_name = now.strftime("%Y_%m_%d__%H_%M_%S")
 path = 'C:/test/' + real_folder_name + '/'
+
+def send_tcp_data(HOST, PORT, input_message):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.connect((HOST, PORT))
+        s.sendall(bytes(input_message, 'utf-8') + b'#')
+        megvan = True
+        while megvan:
+            data = s.recv(1024)
+            if data == "ok":
+                megvan = False
+
+def get_data_tcp_data(HOST, PORT, mit):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.connect((HOST, PORT))
+        s.sendall(bytes(mit, 'utf-8') + b'#')
+        data = s.recv(1024)
+        return data
 
 while True:
     # ============================================ IDLE MODE ===========================================================
@@ -106,17 +128,23 @@ while True:
                     real_folder_name = now.strftime("%Y_%m_%d__%H_%M_%S")
                     path = 'C:/test/' + real_folder_name + '/'
                     print('This flying operation directory:', path)
+                    folder_create.create_folder(real_folder_name, koordinates)
                     drone.takeoff()
                     drone.send_rc_control(0, 0, 0, 0)
 
         if drone.is_flying:
-            print("Set height check: 'h' || Inspection start: 'a' || Land: 'x' ")
+            print("Set height: 'h' || Inspection start: 'a' || Land: 'x' ")
             cmd_command_auto = keyboard.read_key()
             koordinates_save = [0, len(koordinates)]
             # ================================================================================= SET HEIGHT =============
             if cmd_command_auto == 'h':
-                droneheight = drone.get_height()
+                droneheight = get_data_tcp_data(PERMET_HOST, PERMET_PORT, 'height')
                 print(droneheight)
+                if droneheight < expectedheight:
+                    drone.move_up(expectedheight-droneheight)
+                if droneheight > expectedheight:
+                    drone.move_down(droneheight-expectedheight)
+                print("Height calibration done")
             # ================================================================================= INSPECTION =============
             if cmd_command_auto == 'a':
 
@@ -126,13 +154,11 @@ while True:
                 if battery > 15:
                     print("Battery ok", battery, "Might be enough")
                     drone.streamon()
-                    folder_create.create_folder(real_folder_name, koordinates)
                     elso = True
                     bejaras_bool = True
                     j = 0
                     # ================================== BEJÁRÓ CIKLUS =================================================
                     while bejaras_bool: # ================================== nem tesztelt ==============================
-                    # for j, i in enumerate(koordinates):
                         # ============================== STOP ==========================================================
                         if keyboard.is_pressed('s'):
                             os.chdir('C:/test/' + real_folder_name)
@@ -219,7 +245,7 @@ while True:
 
                         if j == len(koordinates) - 1:
                             print('Az egész kész')
-                            bejaras_bool = False # ================================== nem tesztelt =====================
+                            bejaras_bool = False
                             koordinates_save[0] = 0
                             image_operation = True
                             print("Go back to zero, zero")
@@ -319,7 +345,7 @@ while True:
                     print('Move left', leftmovedistance, 'cm')
                     drone.move_left(leftmovedistance)
                 drone.move_down(50)
-                sleep(1)
+                send_tcp_data(PERMET_HOST, PERMET_PORT, 'LEDS ON')
                 drone.move_up(50)
                 permet_i += 1  # ================================== nem tesztelt ====================================
                 # LAST
