@@ -27,6 +27,7 @@ def nearest_point(start_point, array):
 
 
 def floodfill(going_over_coords, start_coord):
+    print('K',going_over_coords)
     # (x,y)
     actual_coord = start_coord
     # (x,y,0)
@@ -43,8 +44,8 @@ def floodfill(going_over_coords, start_coord):
     # print("bejaras: ", bejaras)
     return bejaras
 
-max_x_bejaras = 200
-max_y_bejaras = 200
+max_x_bejaras = 150
+max_y_bejaras = 150
 start_x = 0
 start_y = 0
 
@@ -136,7 +137,7 @@ dis = pygame.display.set_mode((max_x_bejaras + 100, max_y_bejaras + 100))
 
 draw_area(dis)
 bejaras = floodfill(going_over_coords, start_coord)
-
+print('b',bejaras)
 game_over = False
 while not game_over:
     for event in pygame.event.get():

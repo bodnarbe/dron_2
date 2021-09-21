@@ -8,4 +8,5 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.sendall(b'LEDS ON' + b'#')
     data = s.recv(1024)
 
-print('Received', repr(data))
+if data == b'ok':
+    print('Received', repr(data))

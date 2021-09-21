@@ -9,12 +9,17 @@ import folder_create
 import decode_coordinates
 import json
 import socket
+import math
+import copy
+from PIL import Image
 
 PERMET_HOST = '192.168.4.1'  # Permetező IP
 PERMET_PORT = 80  # Permetező port
 
 # Drone parameters
 drone = tello.Tello()
+drone.connect()
+print('Drone connected', 'Battery:', drone.get_battery())
 
 # Drone parameters
 drone_speed = 50
@@ -25,7 +30,9 @@ drone.set_speed(drone_speed)
 koordinatesjson = {}
 koordinatesjson['koordinate'] = []
 koordinates = []
-bejaro_koordinate = []
+bejaras = []
+bejarando_terulet = []
+bejaro_coordinate = []
 coordinatesave = {}
 coordinatesave['koordinate'] = []
 moveback = []
@@ -50,7 +57,7 @@ def send_tcp_data(HOST, PORT, input_message):
         megvan = True
         while megvan:
             data = s.recv(1024)
-            if data == "ok":
+            if data == b'ok':
                 megvan = False
 
 def get_data_tcp_data(HOST, PORT, mit):
@@ -60,16 +67,45 @@ def get_data_tcp_data(HOST, PORT, mit):
         data = s.recv(1024)
         return data
 
+def distance(start_point, end_point):
+    return math.dist(start_point, end_point)
+
+def nearest_point(start_point, array):
+    start_point = [start_point[0], start_point[1]]
+    distances_array = []
+    for i in array:
+        distances_array.append(distance(start_point, [i[0], i[1]]))
+    # print(min(distances_array))
+    return distances_array.index(min(distances_array))
+
+def floodfill(going_over_coords, start_coord):
+    # (x,y)
+    actual_coord = start_coord
+    # (x,y,0)
+    going_over_coords_queue = copy.deepcopy(going_over_coords)
+    while len(going_over_coords_queue) != 0:
+        print('Katt')
+        if actual_coord in going_over_coords_queue:
+            going_over_coords[going_over_coords.index(actual_coord)][2] = 1
+            bejaras.append(actual_coord)
+            going_over_coords_queue.remove(actual_coord)
+            if(len(going_over_coords_queue) != 0):
+                actual_coord = going_over_coords_queue[nearest_point(actual_coord, going_over_coords_queue)]
+    return bejaras
+
 while True:
-    # ============================================ IDLE MODE ===========================================================
+    # ==================================================================================================================
+    # ==================================================================================================================
+    # =========================$$$$$$$$$$$$$$$$$$$ IDLE MODE $$$$$$$$$$$$$$$$$$$========================================
+    # ==================================================================================================================
     # ==================================================================================================================
     if STATE == '0':
         print("Welcome! Collaborative system has started. IDLE MODE!")
-        cmd_idle = input("Choose mode: plane, flying, image")
+        cmd_idle = input("Choose mode: plan, flying, image")
 
-        if cmd_idle == "plane":
+        if cmd_idle == "plan":
             print("Enter plane mode")
-            STATE = "PLANE"
+            STATE = "PLAN"
         if cmd_idle == "flying":
             print("Enter flying mode")
             STATE = "FLYING"
@@ -78,18 +114,47 @@ while True:
             STATE = "IMAGE"
     # ==================================================================================================================
     # ==================================================================================================================
-    # ============================================ PLANE MODE ==========================================================
+    # =========================$$$$$$$$$$$$$$$$$$$ PLAN MODE $$$$$$$$$$$$$$$$$$$========================================
     # ==================================================================================================================
     # ==================================================================================================================
-    if STATE == "PLANE":
-        print()
+    if STATE == "PLAN":
+        print("Enter PLAN mode, just rectangle!")
+        max_x_bejaras = int(input("max_x_bejaras"))
+        max_y_bejaras = int(input("max_y_bejaras"))
+        start_x = int(input("start_x"))
+        start_y = int(input("start_y"))
+        start_coord = [start_x, start_y, 0]
+        plan_x = 0
+        while plan_x != max_x_bejaras + oszto:
+            plan_y = 0
+            while plan_y != max_y_bejaras + oszto:
+                bejarando_terulet.append([plan_x, plan_y, 0])
+                plan_y += oszto
+            plan_x += oszto
+        print(bejarando_terulet)
+
+        bejaras_eredmeny = floodfill(bejarando_terulet, start_coord)
+        print('kész')
+        while len(bejaras_eredmeny) != 0:
+            print(bejaras_eredmeny[0][0], bejaras_eredmeny[0][1])
+            bejaro_coordinate.append([bejaras_eredmeny[0][0], bejaras_eredmeny[0][1]])
+            bejaras_eredmeny.pop(0)
+        print(bejaro_coordinate)
+
+        for i in enumerate(bejaro_coordinate):
+            koordinatesjson['koordinate'].append(i)
+
+        with open('koordinates.txt', 'w') as outfile:
+            json.dump(koordinatesjson, outfile)
+
+        STATE = "0"
+        print('Planing done and saved')
     # ==================================================================================================================
     # ==================================================================================================================
-    # ============================================ FLYING MODE =========================================================
+    # =========================$$$$$$$$$$$$$$$$$$$ FLYING MODE $$$$$$$$$$$$$$$$$$$======================================
     # ==================================================================================================================
     # ==================================================================================================================
     if STATE == "FLYING":
-        drone.connect()
         print('Drone connected', 'Battery:', drone.get_battery())
         cmd_flying = input("Choose mode: Automatic inspection: 'auto' Manual flying mode: 'manual' Spraying: 'spray' LAND: 'land' QUIT: 'quit'")
 
@@ -110,7 +175,7 @@ while True:
     # ==================================================================================================================
     if STATE == "AUTO":
 
-        if not drone.is_flying():
+        if not drone.is_flying:
             cmd_auto = input("Check coordinate's file than import!")
             if cmd_auto == "import":
                 print("Coordinates have been imported... ready to fly")
@@ -133,17 +198,17 @@ while True:
                     drone.send_rc_control(0, 0, 0, 0)
 
         if drone.is_flying:
-            print("Set height: 'h' || Inspection start: 'a' || Land: 'x' ")
+            print("Set height: 'h' || Inspection start: 'a' || Land and quit: 'x' ")
             cmd_command_auto = keyboard.read_key()
             koordinates_save = [0, len(koordinates)]
             # ================================================================================= SET HEIGHT =============
             if cmd_command_auto == 'h':
-                droneheight = get_data_tcp_data(PERMET_HOST, PERMET_PORT, 'height')
-                print(droneheight)
-                if droneheight < expectedheight:
-                    drone.move_up(expectedheight-droneheight)
-                if droneheight > expectedheight:
-                    drone.move_down(droneheight-expectedheight)
+                #droneheight = get_data_tcp_data(PERMET_HOST, PERMET_PORT, 'height')
+                #print(droneheight)
+                #if droneheight < expectedheight:
+                #    drone.move_up(expectedheight-droneheight)
+                #if droneheight > expectedheight:
+                #    drone.move_down(droneheight-expectedheight)
                 print("Height calibration done")
             # ================================================================================= INSPECTION =============
             if cmd_command_auto == 'a':
@@ -158,7 +223,7 @@ while True:
                     bejaras_bool = True
                     j = 0
                     # ================================== BEJÁRÓ CIKLUS =================================================
-                    while bejaras_bool: # ================================== nem tesztelt ==============================
+                    while bejaras_bool:
                         # ============================== STOP ==========================================================
                         if keyboard.is_pressed('s'):
                             os.chdir('C:/test/' + real_folder_name)
@@ -264,7 +329,7 @@ while True:
                             bejaras_bool = False
                 else:
                     print("Aksi csere kell")
-            # ================================================================================= LAND ===================
+            # ================================================================================= LAND AND QUIT ==========
             if cmd_command_auto == 'x':
                 sleep(2)
                 drone.land()
@@ -273,6 +338,8 @@ while True:
     # ==================================================================================================================
     if STATE == "MANUAL":
         cmd_command_manual = keyboard.read_key()
+        if cmd_command_manual == 't':
+            drone.takeoff()
 
         if cmd_command_manual == 'c':
             drone.send_rc_control(0, 0, 0, 0)
@@ -289,10 +356,10 @@ while True:
         if cmd_command_manual == 'd':
             drone.send_rc_control(drone_speed, 0, 0, 0)
 
-        if cmd_command_manual == 'g':
+        if cmd_command_manual == 'r':
             drone.send_rc_control(0, 0, drone_speed, 0)
 
-        if cmd_command_manual == 't':
+        if cmd_command_manual == 'f':
             drone.send_rc_control(0, 0, -drone_speed, 0)
 
         if cmd_command_manual == 'e':
@@ -303,12 +370,15 @@ while True:
 
         if cmd_command_manual == 'x':
             drone.send_rc_control(0, 0, 0, 0)
+            drone.land()
             print("Kilépés a manualból....")
             STATE = "FLYING"
     # ============================================= SPRAY MODE =========================================================
     # ==================================================================================================================
     if STATE == "SPRAY":
+        drone.takeoff()
         os.chdir('C:/test')
+        send_tcp_data(PERMET_HOST, PERMET_PORT, 'SPRAY ON')
         if os.path.isfile("permet.txt"):
             print("Permetezés")
             with open('permet.txt') as json_file:
@@ -318,6 +388,7 @@ while True:
                 print("Imported: ", permet)
             permet_bool = True
             permet_i = 0
+
             while permet_bool:  # ================================== nem tesztelt ===================================
                 # for permet_i, k in enumerate(permet):
                 move_order = decode_coordinates.decode_coordinates(permet, permet_i)
@@ -344,8 +415,10 @@ while True:
                     leftmovedistance = move_order[0][3]
                     print('Move left', leftmovedistance, 'cm')
                     drone.move_left(leftmovedistance)
+
                 drone.move_down(50)
                 send_tcp_data(PERMET_HOST, PERMET_PORT, 'LEDS ON')
+                sleep(1)
                 drone.move_up(50)
                 permet_i += 1  # ================================== nem tesztelt ====================================
                 # LAST
@@ -361,13 +434,15 @@ while True:
                     if moveback[1] < 0:
                         drone.move_right(moveback[1])
                     sleep(1)
+                    drone.land()
+                    send_tcp_data(PERMET_HOST, PERMET_PORT, 'SPRAY OFF')
                     STATE = "FLYING"
         else:
             print("Nincs permet koordináta")
             STATE = "FLYING"
     # ==================================================================================================================
     # ==================================================================================================================
-    # ============================================= IMAGE MODE =========================================================
+    # ==========================$$$$$$$$$$$$$$$$$$$ IMAGE MODE $$$$$$$$$$$$$$$$$$$======================================
     # ==================================================================================================================
     # ==================================================================================================================
     if STATE == "IMAGE":
